@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Ghost Lights</title>
+<meta name="description" content="Ghost Lights: lead lost little ghosts home across a foggy marsh by lantern light. A small Halloween puzzle on the Strata engine.">
+<style>
+  :root {
+    --bg: #070a10; --panel: rgba(12, 16, 26, 0.9); --line: #2c3548; --text: #eef0f6; --dim: #a5adc0;
+    --lamp: #ffb04a; --wisp: #6effc4; --btn: #182032; --btn-on: #4a3214; --warn: #ff7a5c;
+    --sk-loader-bg: var(--bg); --sk-loader-fg: var(--text); --sk-loader-panel: var(--panel); --sk-loader-accent: var(--lamp);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  #top { flex: 0 0 auto; display: flex; gap: 8px; align-items: center; z-index: 3;
+    padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 6px max(10px, env(safe-area-inset-left));
+    background: var(--panel); border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 700; letter-spacing: 0.03em; white-space: nowrap; }
+  .brand a { color: var(--lamp); text-decoration: none; }
+  #night { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+  #count { white-space: nowrap; font-weight: 600; }
+  #count .g { display: inline-block; width: 11px; height: 13px; margin: 0 2px -1px 0; border-radius: 6px 6px 2px 2px;
+    background: #dfe8ff; opacity: 0.85; }
+  button { font: inherit; color: var(--text); background: var(--btn); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 11px; min-height: 36px; min-width: 36px; cursor: pointer; touch-action: manipulation; }
+  body.touch button { min-height: 44px; min-width: 44px; }
+  button:focus-visible { outline: 2px solid var(--lamp); }
+  #soundBtn[aria-pressed="false"] { text-decoration: line-through; opacity: 0.7; }
+  #stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  canvas#canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; background: #000; }
+  #touch { position: absolute; inset: 0; z-index: 1; touch-action: none; }
+  #stickBase, #stickKnob { position: absolute; border-radius: 50%; pointer-events: none; display: none; }
+  #stickBase { width: 128px; height: 128px; margin: -64px 0 0 -64px; border: 2px solid rgba(238, 240, 246, 0.35);
+    background: rgba(12, 16, 26, 0.25); }
+  #stickBase.fast { border-color: var(--warn); box-shadow: 0 0 18px rgba(255, 122, 92, 0.6); }
+  #stickKnob { width: 54px; height: 54px; margin: -27px 0 0 -27px; background: rgba(255, 176, 74, 0.6); }
+  #flareBtn { position: absolute; z-index: 2; right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom));
+    width: 92px; height: 92px; border-radius: 50%; font-weight: 700; font-size: 16px; padding: 0;
+    background: radial-gradient(circle, rgba(255, 176, 74, 0.45), rgba(24, 32, 50, 0.85) 70%); border: 2px solid var(--lamp); }
+  #flareBtn .fill { position: absolute; inset: -2px; border-radius: 50%; pointer-events: none;
+    background: conic-gradient(rgba(255, 176, 74, 0.0) var(--p, 100%), rgba(7, 10, 16, 0.65) 0); }
+  #flareBtn.wait { border-color: var(--line); color: var(--dim); }
+  #flareBtn span { position: relative; }
+  #toast { position: absolute; z-index: 2; left: 50%; top: 14px; transform: translateX(-50%); max-width: min(92%, 520px);
+    padding: 7px 14px; border-radius: 10px; background: rgba(12, 16, 26, 0.78); border: 1px solid var(--line);
+    text-align: center; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
+  #toast.on { opacity: 1; }
+  #toast.warn { border-color: var(--warn); color: #ffd8cc; }
+  #toast.wisp { border-color: var(--wisp); color: #d6fff0; }
+  #keysHint { position: absolute; z-index: 2; left: max(12px, env(safe-area-inset-left)); bottom: 12px; color: var(--dim);
+    font-size: 13px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+  body.touch #keysHint { display: none; }
+  kbd { background: #222b3e; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+  .card { position: absolute; z-index: 4; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(92vw, 470px); max-height: 86%; overflow-y: auto; padding: 18px 20px 16px; border-radius: 14px;
+    background: rgba(10, 14, 22, 0.94); border: 1px solid var(--line); box-shadow: 0 0 40px rgba(255, 176, 74, 0.12);
+    display: none; text-align: center; }
+  .card.on { display: block; }
+  .card h2 { margin: 2px 0 4px; color: var(--lamp); font-size: 22px; font-weight: 700; letter-spacing: 0.02em; }
+  .card .sub { color: var(--dim); font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; }
+  .card p { margin: 10px 0; }
+  .card .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+  .card .go { background: var(--btn-on); border-color: var(--lamp); font-weight: 700; min-width: 140px; min-height: 46px; }
+  .card ul { text-align: left; margin: 8px 0; padding-left: 20px; }
+  .card li { margin: 4px 0; }
+  .for-touch { display: none; }
+  body.touch .for-touch { display: block; }
+  body.touch .for-keys { display: none; }
+  #help a, .card a { color: var(--lamp); }
+  @media (max-width: 520px) { #night .long { display: none; } .brand { font-size: 14px; } #top { gap: 6px; }
+    #top button { padding: 4px 8px; } }
+  @media (max-width: 360px) { .brand { display: none; } }
+</style>
+</head>
+<body>
+<div id="top">
+  <span class="brand"><a href="https://danielstephenson.dev/play" target="_top" title="More games">Ghost Lights</a></span>
+  <span id="night" aria-live="polite"></span>
+  <span id="count" title="Ghosts home"></span>
+  <button id="soundBtn" title="Sound on or off (M)" aria-label="Sound" aria-pressed="true">&#9835;</button>
+  <button id="restartBtn" title="Start this night again (R)" aria-label="Start this night again">&#8635;</button>
+  <button id="helpBtn" title="How to play (H)" aria-label="How to play">?</button>
+</div>
+<div id="stage">
+  <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="touch" aria-hidden="true"><div id="stickBase"></div><div id="stickKnob"></div></div>
+  <div id="toast" role="status"></div>
+  <div id="keysHint"><kbd>WASD</kbd> or hold the mouse: walk &middot; <kbd>Shift</kbd> hurry &middot; <kbd>Space</kbd> flare</div>
+  <button id="flareBtn" title="Flare the lantern (Space)" aria-label="Flare the lantern"><div class="fill"></div><span>Flare</span></button>
+
+  <div id="intro" class="card" role="dialog" aria-labelledby="introName">
+    <div class="sub" id="introNight"></div>
+    <h2 id="introName"></h2>
+    <p id="introHint"></p>
+    <div class="row"><button class="go" id="beginBtn">Light the lantern</button></div>
+  </div>
+  <div id="done" class="card" role="dialog" aria-labelledby="doneTitle">
+    <div class="sub" id="doneNight"></div>
+    <h2 id="doneTitle">Every ghost is home</h2>
+    <p id="doneText"></p>
+    <div class="row"><button id="againBtn">Play this night again</button><button class="go" id="nextBtn">Next night</button></div>
+  </div>
+  <div id="end" class="card" role="dialog" aria-labelledby="endTitle">
+    <div class="sub">All Hallows' Eve</div>
+    <h2 id="endTitle">The marsh is quiet</h2>
+    <p>Every lost ghost is home for Halloween. The cottage and the churchyard are full of soft light and very small, very happy ghosts.</p>
+    <p id="endText"></p>
+    <div class="row"><button class="go" id="newBtn">Play from the first night</button></div>
+    <p style="color:var(--dim);font-size:13px"><a href="https://danielstephenson.dev/play" target="_top">More games</a></p>
+  </div>
+  <div id="help" class="card" role="dialog" aria-labelledby="helpTitle">
+    <h2 id="helpTitle">Ghost Lights</h2>
+    <p>Little lost ghosts drift across the marsh tonight. Carry your lantern close and they follow its light. Lead them home.</p>
+    <ul class="for-keys">
+      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or the arrow keys, or hold the mouse button where you want to go: walk.</li>
+      <li><kbd>Shift</kbd>: hurry. Hurrying frightens the ghosts in your light, and they scatter.</li>
+      <li><kbd>Space</kbd>: flare the lantern. It chases will-o'-the-wisps away and calls nearby ghosts to you. It takes a few seconds to come back.</li>
+      <li><kbd>R</kbd>: start the night again. <kbd>M</kbd>: sound. <kbd>Enter</kbd>: continue.</li>
+    </ul>
+    <ul class="for-touch">
+      <li>Drag anywhere to walk. Push the stick all the way out to hurry, but hurrying frightens the ghosts and they scatter.</li>
+      <li><b>Flare</b> chases will-o'-the-wisps away and calls nearby ghosts to you. It takes a few seconds to come back.</li>
+      <li>&#8635; starts the night again; &#9835; turns the sound off and on.</li>
+    </ul>
+    <p>The faint ring on the ground is how far your light reaches. Fog banks swallow it, so walk close in the fog.</p>
+    <p style="color:var(--dim);font-size:13px">Five short nights. Built on the <a href="https://github.com/Preponderous-Software/strata" target="_blank" rel="noopener">Strata</a> engine;
+      <a href="https://github.com/Preponderous-Software/ghost-lights" target="_blank" rel="noopener">source</a>.</p>
+    <div class="row"><button class="go" id="helpClose">Play</button></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var canvas = $('canvas');
+  var ready = false, call = {}, st = null, seenLevel = -1, lastEv = null;
+  var touchMode = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  var nights = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'];
+
+  // ------------------------------------------------------------------ sound
+  // Everything is synthesised here with Web Audio: no recordings. Browsers
+  // start sound only after a tap, click or key.
+  var audio = null, master = null, muted = false;
+  try { muted = localStorage.getItem('ghost-lights-sound') === 'off'; } catch (e) {}
+  function unlock() {
+    if (audio) { if (audio.state === 'suspended') audio.resume(); return; }
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audio = new AC();
+    master = audio.createGain();
+    master.gain.value = muted ? 0 : 0.8;
+    master.connect(audio.destination);
+    ambience();
+  }
+  function setMuted(m) {
+    muted = m;
+    try { localStorage.setItem('ghost-lights-sound', m ? 'off' : 'on'); } catch (e) {}
+    $('soundBtn').setAttribute('aria-pressed', m ? 'false' : 'true');
+    $('soundBtn').setAttribute('aria-label', m ? 'Sound (off)' : 'Sound');
+    if (master) master.gain.setTargetAtTime(m ? 0 : 0.8, audio.currentTime, 0.05);
+  }
+  function noiseBuffer(seconds, brown) {
+    var n = Math.floor(audio.sampleRate * seconds), b = audio.createBuffer(1, n, audio.sampleRate), d = b.getChannelData(0), last = 0;
+    for (var i = 0; i < n; i++) {
+      var w = Math.random() * 2 - 1;
+      if (brown) { last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; } else d[i] = w;
+    }
+    return b;
+  }
+  function tone(type, f0, f1, at, dur, gain, dest) {
+    var o = audio.createOscillator(), g = audio.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, at);
+    if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, at + dur);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(gain, at + Math.min(0.03, dur / 4));
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g); g.connect(dest || master);
+    o.start(at); o.stop(at + dur + 0.05);
+  }
+  function bell(f, at, gain) {
+    tone('sine', f, f, at, 1.4, gain);
+    tone('sine', f * 2.01, f * 2.01, at, 0.7, gain * 0.35);
+    tone('triangle', f * 3.0, f * 3.0, at, 0.25, gain * 0.12);
+  }
+  function whoosh(f0, f1, at, dur, gain) {
+    var s = audio.createBufferSource(), f = audio.createBiquadFilter(), g = audio.createGain();
+    s.buffer = noiseBuffer(dur + 0.1, false);
+    f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(f0, at); f.frequency.exponentialRampToValueAtTime(f1, at + dur);
+    g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(gain, at + dur * 0.3);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    s.connect(f); f.connect(g); g.connect(master);
+    s.start(at); s.stop(at + dur + 0.1);
+  }
+  // Wind over the marsh, frogs, and a cricket or two.
+  function ambience() {
+    var wind = audio.createBufferSource(), lp = audio.createBiquadFilter(), g = audio.createGain();
+    wind.buffer = noiseBuffer(6, true); wind.loop = true;
+    lp.type = 'lowpass'; lp.frequency.value = 500;
+    g.gain.value = 0.10;
+    var lfo = audio.createOscillator(), lg = audio.createGain();
+    lfo.frequency.value = 0.07; lg.gain.value = 0.06;
+    lfo.connect(lg); lg.connect(g.gain); lfo.start();
+    wind.connect(lp); lp.connect(g); g.connect(master); wind.start();
+    function frog() {
+      if (!muted && !document.hidden) {
+        var t = audio.currentTime + 0.05, f = 95 + Math.random() * 60, lpF = audio.createBiquadFilter();
+        lpF.type = 'lowpass'; lpF.frequency.value = 600; lpF.connect(master);
+        for (var k = 0; k < 3; k++) tone('square', f, f * 0.85, t + k * 0.075, 0.06, 0.035, lpF);
+      }
+      setTimeout(frog, 1800 + Math.random() * 4200);
+    }
+    function cricket() {
+      if (!muted && !document.hidden) {
+        var t = audio.currentTime + 0.05;
+        for (var k = 0; k < 4; k++) tone('sine', 4200, 4200, t + k * 0.05, 0.03, 0.01);
+      }
+      setTimeout(cricket, 700 + Math.random() * 2500);
+    }
+    setTimeout(frog, 1500); setTimeout(cricket, 900);
+  }
+  var scale = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+  function play(what, n) {
+    if (!audio || muted) return;
+    var t = audio.currentTime + 0.02;
+    if (what === 'joined') bell(523.25 * Math.pow(2, scale[Math.min(n, scale.length - 1)] / 12), t, 0.12);
+    else if (what === 'scattered') { whoosh(2200, 300, t, 0.5, 0.25); tone('sine', 900, 380, t, 0.45, 0.08); }
+    else if (what === 'lost') tone('sine', 330, 220, t, 0.6, 0.06);
+    else if (what === 'lured') { tone('triangle', 660, 640, t, 0.9, 0.05); tone('triangle', 667, 700, t, 0.9, 0.05); }
+    else if (what === 'rescued') { bell(659.25, t, 0.09); bell(880, t + 0.12, 0.09); }
+    else if (what === 'home') { bell(523.25, t, 0.08); bell(659.25, t + 0.08, 0.07); bell(783.99, t + 0.16, 0.07); }
+    else if (what === 'flare') { whoosh(300, 3000, t, 0.6, 0.18); tone('sine', 220, 440, t, 0.6, 0.06); }
+    else if (what === 'levelsDone') [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach(function (f, i) { bell(f, t + 0.18 * i, 0.1); });
+  }
+
+  // ------------------------------------------------------------------ the page
+  function api(name, ret, args) { return Module.cwrap(name, ret, args || []); }
+  function cardOpen() { return document.querySelector('.card.on') !== null; }
+  function show(id, on) { $(id).classList.toggle('on', on); sync(); }
+
+  var toastTimer = null;
+  function toast(text, kind) {
+    var t = $('toast');
+    t.textContent = text;
+    t.className = 'on' + (kind ? ' ' + kind : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.className = ''; }, 2600);
+  }
+
+  function setTouch(on) {
+    touchMode = on;
+    document.body.classList.toggle('touch', on);
+  }
+
+  // The drawing size: the stage in CSS pixels, times the device pixel ratio
+  // capped at 2 (SDL applies the ratio itself, so pass the scaled CSS size).
+  function sync() {
+    if (!ready) return;
+    var s = $('stage'), dpr = window.devicePixelRatio || 1, k = dpr > 2 ? 2 / dpr : 1;
+    call.resize(Math.round(s.clientWidth * k), Math.round(s.clientHeight * k), cardOpen() ? 1 : 0);
+  }
+
+  function intro(s) {
+    $('introNight').textContent = (nights[s.level] || '') + ' night of ' + s.levels;
+    $('introName').textContent = s.name;
+    $('introHint').textContent = touchMode ? s.touchHint : s.hint;
+    show('intro', true);
+  }
+
+  function refresh() {
+    if (!ready) return;
+    var s;
+    try { s = JSON.parse(call.status()); } catch (e) { return; }
+    st = s;
+    window.ghostStatus = s;
+    $('night').innerHTML = '';
+    var n = document.createElement('span');
+    n.textContent = 'Night ' + (s.level + 1) + ' of ' + s.levels;
+    var long = document.createElement('span');
+    long.className = 'long';
+    long.textContent = ': ' + s.name;
+    $('night').appendChild(n); $('night').appendChild(long);
+    $('count').innerHTML = '<span class="g"></span>' + s.home + ' / ' + s.ghosts + ' home';
+    var p = Math.round(s.flare * 100);
+    $('flareBtn').style.setProperty('--p', p + '%');
+    $('flareBtn').classList.toggle('wait', p < 100);
+    if (s.level !== seenLevel) {
+      seenLevel = s.level;
+      show('done', false);
+      if (!$('help').classList.contains('on')) intro(s);
+    }
+    var ev = s.ev;
+    if (lastEv) {
+      if (ev.levelsDone > lastEv.levelsDone) {
+        play('levelsDone');
+        var secs = Math.round(s.time), min = Math.floor(secs / 60), rest = secs % 60;
+        $('doneNight').textContent = (nights[s.level] || '') + ' night: ' + s.name;
+        $('doneText').textContent = s.ghosts + ' ghosts home in ' + (min ? min + ' min ' : '') + rest + ' s' +
+          (s.scatters === 0 ? '. Not one was frightened: a perfectly calm night.' :
+           ', with ' + s.scatters + (s.scatters === 1 ? ' fright.' : ' frights.'));
+        $('nextBtn').textContent = s.level + 1 >= s.levels ? 'Finish' : 'Next night';
+        setTimeout(function () { show('done', true); }, 900);
+      } else if (ev.home > lastEv.home) { play('home'); toast(s.home < s.ghosts ? 'Home! ' + (s.ghosts - s.home) + ' still out on the marsh.' : 'Home!'); }
+      if (ev.scattered > lastEv.scattered) { play('scattered'); toast('Too fast! The ghosts took fright and scattered.', 'warn'); }
+      if (ev.lured > lastEv.lured) { play('lured'); toast(touchMode ? 'A wisp is luring a ghost away. Tap Flare!' : 'A wisp is luring a ghost away. Flare with Space!', 'wisp'); }
+      if (ev.rescued > lastEv.rescued) play('rescued');
+      if (ev.lost > lastEv.lost) { play('lost'); toast('A ghost lost sight of your lantern.'); }
+      if (ev.joined > lastEv.joined) {
+        play('joined', s.following);
+        if (s.level === 0 && ev.joined - lastEv.joined && s.following === 1 && s.home === 0) toast('A little ghost follows your light.');
+      }
+      if (ev.flares > lastEv.flares) play('flare');
+    }
+    lastEv = ev;
+    if (s.finished && !$('end').classList.contains('on')) {
+      $('endText').textContent = 'Thank you for walking them home.';
+      show('done', false);
+      show('end', true);
+    }
+  }
+
+  // ---- keys
+  var keys = {};
+  function sendKeys() {
+    if (!ready) return;
+    var x = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+    var z = (keys.ArrowDown || keys.KeyS ? 1 : 0) - (keys.ArrowUp || keys.KeyW ? 1 : 0);
+    call.move(x, z, keys.ShiftLeft || keys.ShiftRight ? 1 : 0);
+  }
+  window.addEventListener('keydown', function (e) {
+    unlock();
+    if (!ready) return;
+    if (e.code === 'Enter' || (e.code === 'Space' && cardOpen())) {
+      e.preventDefault();
+      var c = document.querySelector('.card.on .go');
+      if (c) c.click();
+      return;
+    }
+    if (e.code === 'Escape') { if ($('help').classList.contains('on')) $('helpClose').click(); return; }
+    if (cardOpen()) return;
+    if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) call.flare(); return; }
+    if (e.code === 'KeyR' && !e.repeat) { call.restart(); seenLevel = -1; refresh(); return; }
+    if (e.code === 'KeyM' && !e.repeat) { setMuted(!muted); return; }
+    if (e.code === 'KeyH' && !e.repeat) { $('helpBtn').click(); return; }
+    if (/^(Arrow|Key[WASD]|Shift)/.test(e.code)) { e.preventDefault(); keys[e.code] = true; sendKeys(); }
+  });
+  window.addEventListener('keyup', function (e) { if (keys[e.code]) { delete keys[e.code]; sendKeys(); } });
+  window.addEventListener('blur', function () { keys = {}; sendKeys(); if (ready) call.pointer(0, 0, 0, 0); });
+
+  // ---- the mouse: hold to walk towards the pointer; the finger: a stick
+  var layer = $('touch'), stick = null, mouse = false, R = 64;
+  function rel(e) {
+    var r = layer.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, px: e.clientX - r.left, py: e.clientY - r.top };
+  }
+  layer.addEventListener('pointerdown', function (e) {
+    unlock();
+    if (!ready || cardOpen()) return;
+    e.preventDefault();
+    if (layer.setPointerCapture) layer.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'mouse') {
+      if (e.button !== 0) return;
+      mouse = true;
+      var p = rel(e);
+      call.pointer(p.x, p.y, 1, e.shiftKey ? 1 : 0);
+      return;
+    }
+    if (!touchMode) setTouch(true);
+    if (stick) return;
+    var q = rel(e);
+    stick = { id: e.pointerId, x: q.px, y: q.py };
+    ['stickBase', 'stickKnob'].forEach(function (id) {
+      var el = $(id); el.style.display = 'block'; el.style.left = q.px + 'px'; el.style.top = q.py + 'px';
+    });
+  });
+  layer.addEventListener('pointermove', function (e) {
+    if (!ready) return;
+    if (mouse && e.pointerType === 'mouse') { var p = rel(e); call.pointer(p.x, p.y, 1, e.shiftKey ? 1 : 0); return; }
+    if (!stick || e.pointerId !== stick.id) return;
+    var q = rel(e), dx = q.px - stick.x, dy = q.py - stick.y, m = Math.sqrt(dx * dx + dy * dy);
+    if (m > R) { dx *= R / m; dy *= R / m; }
+    $('stickKnob').style.left = (stick.x + dx) + 'px';
+    $('stickKnob').style.top = (stick.y + dy) + 'px';
+    var fast = m > R * 0.97;
+    $('stickBase').classList.toggle('fast', fast);
+    // Inside a small dead zone the keeper stands still.
+    var k = m < 6 ? 0 : 1 / R;
+    call.move(dx * k, dy * k, fast ? 1 : 0);
+  });
+  function release(e) {
+    if (mouse && e.pointerType === 'mouse') { mouse = false; if (ready) call.pointer(0, 0, 0, 0); }
+    if (stick && e.pointerId === stick.id) {
+      stick = null;
+      if (ready) call.move(0, 0, 0);
+      $('stickBase').style.display = 'none'; $('stickKnob').style.display = 'none';
+      $('stickBase').classList.remove('fast');
+    }
+  }
+  ['pointerup', 'pointercancel'].forEach(function (t) { layer.addEventListener(t, release); });
+
+  function wire() {
+    $('flareBtn').addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); unlock(); if (!cardOpen()) call.flare(); });
+    $('flareBtn').addEventListener('click', function (e) { if (e.detail === 0 && !cardOpen()) call.flare(); });
+    $('soundBtn').addEventListener('click', function () { unlock(); setMuted(!muted); });
+    $('restartBtn').addEventListener('click', function () {
+      if (!ready) return;
+      ['done', 'end'].forEach(function (id) { $(id).classList.remove('on'); });
+      call.restart(); seenLevel = -1; refresh();
+    });
+    $('helpBtn').addEventListener('click', function () { show('intro', false); show('help', true); });
+    $('helpClose').addEventListener('click', function () {
+      unlock();
+      try { localStorage.setItem('ghost-lights-seen-help', '1'); } catch (e) {}
+      show('help', false);
+      if (st && !levelStarted[st.level]) intro(st);
+    });
+    $('beginBtn').addEventListener('click', function () { unlock(); if (st) levelStarted[st.level] = true; show('intro', false); });
+    $('nextBtn').addEventListener('click', function () { unlock(); show('done', false); call.next(); refresh(); });
+    $('againBtn').addEventListener('click', function () { show('done', false); call.restart(); seenLevel = -1; refresh(); });
+    $('newBtn').addEventListener('click', function () { show('end', false); levelStarted = {}; call.level(0); seenLevel = -1; refresh(); });
+    document.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { b.blur(); }); });
+    window.addEventListener('touchstart', function () { if (!touchMode) setTouch(true); }, { passive: true });
+    window.addEventListener('resize', sync);
+    if (window.ResizeObserver) new ResizeObserver(sync).observe($('stage'));
+    setInterval(refresh, 100);
+  }
+  var levelStarted = {};
+
+  window.Module = {
+    canvas: canvas,
+    print: function (t) { console.log(t); },
+    printErr: function (t) { console.warn(t); },
+    onGameReady: function () {
+      call = {
+        move: api('gl_move', null, ['number', 'number', 'number']),
+        pointer: api('gl_pointer', null, ['number', 'number', 'number', 'number']),
+        flare: api('gl_flare'),
+        next: api('gl_next'),
+        restart: api('gl_restart'),
+        level: api('gl_level', null, ['number']),
+        solve: api('gl_solve'),
+        autopilot: api('gl_autopilot', null, ['number']),
+        resize: api('gl_resize', null, ['number', 'number', 'number']),
+        status: api('gl_status', 'string')
+      };
+      window.ghostLights = call;  // for the smoke test and the curious
+      ready = true;
+      StrataBoot.ready();
+      setTouch(touchMode);
+      setMuted(muted);
+      wire();
+      var seen = false;
+      try { seen = localStorage.getItem('ghost-lights-seen-help') === '1'; } catch (e) {}
+      if (!seen) show('help', true);
+      refresh();
+      sync();
+    },
+    onRendererFailed: function (why) {
+      StrataLoader.fallback('engine', 'Ghost Lights needs WebGL 2, which this browser did not provide (' + why + ').');
+    }
+  };
+})();
+</script>
+<!-- emcc's script tag, kept inert: web/strata-boot.js starts it behind the
+     loading shell. data-bytes is the download's size, stamped by the build. -->
+<template id="strata-glue" data-bytes="0">{{{ SCRIPT }}}</template>
+<!-- The loading shell, vendored from Strata, and its bridge to this build; the
+     build puts both inline (web/strata_page.cmake). -->
+<script src="strata-kit/strata-loader.js"></script>
+<script src="strata-boot.js"></script>
+<script>
+  StrataBoot.start({
+    wasm: 'ghost-lights.wasm',
+    title: 'Ghost Lights',
+    fallback: { href: 'https://danielstephenson.dev/play', text: 'More games' },
+    canvas: document.getElementById('canvas')
+  }).catch(function () {});
+</script>
+</body>
+</html>
