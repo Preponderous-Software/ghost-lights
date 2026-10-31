@@ -1,0 +1,6 @@
+build*/
+Testing/
+*.swp
+web/smoke/node_modules/
+smoke-out/
+web-site/
