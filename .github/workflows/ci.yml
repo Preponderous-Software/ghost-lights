@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rules:
+    name: Rules and tests (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the rules and tests (no engine)
+        run: |
+          cmake -S . -B build -DGHOST_WARNINGS_AS_ERRORS=ON
+          cmake --build build -j4
+      - name: Tests (the autopilot finishes all five nights without a fright)
+        run: ctest --test-dir build --output-on-failure -V

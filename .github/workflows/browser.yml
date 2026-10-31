@@ -1,0 +1,102 @@
+# Builds Ghost Lights for the browser (Emscripten + Strata's WebGL 2 backend),
+# runs the rules' tests as wasm under Node, smoke-tests the page in headless
+# Chromium on a desktop and a phone profile, and, when enabled, deploys it to
+# arcade as https://ghost-lights.play.danielstephenson.dev
+name: Browser build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    name: Web build and smoke test (headless Chromium)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the pinned Strata
+        run: |
+          ref="$(sed -n 's/.*GHOST_STRATA_REF "\([0-9a-f]*\)".*/\1/p' CMakeLists.txt)"
+          test -n "$ref"
+          git init -q "$RUNNER_TEMP/strata"
+          git -C "$RUNNER_TEMP/strata" fetch -q --depth 1 https://github.com/Preponderous-Software/strata.git "$ref"
+          git -C "$RUNNER_TEMP/strata" checkout -q FETCH_HEAD
+          echo "STRATA_DIR=$RUNNER_TEMP/strata" >> "$GITHUB_ENV"
+
+      - name: Set up emsdk 6.0.11 (Strata's pin)
+        run: |
+          git clone -q --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.11
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.11
+
+      - name: Configure and build
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release -DGHOST_WEB=ON \
+            -DGHOST_WARNINGS_AS_ERRORS=ON -DFETCHCONTENT_SOURCE_DIR_STRATA="$STRATA_DIR" -Wno-dev
+          cmake --build build-web -j "$(nproc)"
+
+      - name: Tests as wasm (Node)
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          ctest --test-dir build-web --output-on-failure
+
+      - name: Assemble the site
+        run: |
+          mkdir -p web-site
+          cp build-web/ghost-lights.html web-site/index.html
+          cp build-web/ghost-lights.js build-web/ghost-lights.wasm web-site/
+          grep -q 'danielstephenson.dev/play' web-site/index.html
+          ls -l web-site
+          echo "site: $(du -sh web-site | cut -f1)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright and Chromium
+        working-directory: web/smoke
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Smoke test (desktop, then iPhone 13 profile)
+        run: |
+          python3 -m http.server 8080 --bind 127.0.0.1 --directory web-site > http.log 2>&1 &
+          sleep 1
+          node web/smoke/smoke.cjs http://127.0.0.1:8080/ smoke-out/desktop
+          node web/smoke/smoke.cjs http://127.0.0.1:8080/ smoke-out/phone --phone
+
+      - name: Upload smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-smoke
+          path: smoke-out/
+          if-no-files-found: ignore
+
+      - name: Write the deploy version
+        run: |
+          version=$(sed -n 's/^project(ghost_lights VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "${version}+g${GITHUB_SHA::7}" > "$RUNNER_TEMP/arcade-version.txt"
+          cat "$RUNNER_TEMP/arcade-version.txt"
+
+      - name: Deploy to arcade
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && vars.ARCADE_ENABLED == 'true')
+        uses: Stephenson-Software/arcade-deploy@v1
+        with:
+          slug: ghost-lights
+          token: ${{ secrets.ARCADE_TOKEN }}
+          site-dir: web-site
+          version-file: ${{ runner.temp }}/arcade-version.txt
