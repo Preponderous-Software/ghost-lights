@@ -304,7 +304,8 @@
           (s.scatters === 0 ? '. Not one was frightened: a perfectly calm night.' :
            ', with ' + s.scatters + (s.scatters === 1 ? ' fright.' : ' frights.'));
         $('nextBtn').textContent = s.level + 1 >= s.levels ? 'Finish' : 'Next night';
-        setTimeout(function () { show('done', true); }, 900);
+        var doneLevel = s.level;
+        setTimeout(function () { if (st && st.level === doneLevel && st.done && !st.finished) show('done', true); }, 900);
       } else if (ev.home > lastEv.home) { play('home'); toast(s.home < s.ghosts ? 'Home! ' + (s.ghosts - s.home) + ' still out on the marsh.' : 'Home!'); }
       if (ev.scattered > lastEv.scattered) { play('scattered'); toast('Too fast! The ghosts took fright and scattered.', 'warn'); }
       if (ev.lured > lastEv.lured) { play('lured'); toast(touchMode ? 'A wisp is luring a ghost away. Tap Flare!' : 'A wisp is luring a ghost away. Flare with Space!', 'wisp'); }
