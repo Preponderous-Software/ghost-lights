@@ -227,8 +227,8 @@ void placeMesh(strata::Engine& e, uint32_t id, V3 p, float s, float sway) {
     e.setMeshTransform(id, m);
 }
 
-const Rgb kGrass{0.050f, 0.070f, 0.040f}, kGrassLight{0.075f, 0.090f, 0.050f}, kMud{0.060f, 0.050f, 0.040f},
-    kPath{0.13f, 0.11f, 0.08f}, kBank{0.035f, 0.045f, 0.030f}, kReed{0.10f, 0.12f, 0.05f}, kTrunk{0.07f, 0.055f, 0.045f},
+const Rgb kGrass{0.080f, 0.110f, 0.060f}, kGrassLight{0.115f, 0.140f, 0.075f}, kMud{0.090f, 0.075f, 0.058f},
+    kPath{0.20f, 0.17f, 0.12f}, kBank{0.050f, 0.065f, 0.042f}, kReed{0.10f, 0.12f, 0.05f}, kTrunk{0.07f, 0.055f, 0.045f},
     kStone{0.22f, 0.22f, 0.24f}, kWall{0.26f, 0.22f, 0.18f}, kRoof{0.14f, 0.09f, 0.06f}, kWood{0.12f, 0.07f, 0.04f},
     kWarm{1.0f, 0.72f, 0.32f};
 
@@ -325,7 +325,7 @@ void Game::build() {
     Builder b, glow;
     // ---- ponds: dark water, reeds round the edge
     for (const Circle& c : l.ponds) {
-        b.disc(at(c.c, -0.12f), c.r + 0.2f, 28, {0.012f, 0.022f, 0.040f});
+        b.disc(at(c.c, -0.12f), c.r + 0.2f, 28, {0.030f, 0.055f, 0.095f});
         const int reeds = static_cast<int>(c.r * 9);
         for (int i = 0; i < reeds; ++i) {
             const float a = 2 * kPi * (static_cast<float>(i) + hash(c.c.x, static_cast<float>(i)) * 0.6f) / static_cast<float>(reeds);
@@ -476,7 +476,7 @@ void Game::build() {
     }
     for (float x = -l.half.x - 4; x <= l.half.x + 4; x += 4.5f)
         for (float z = -l.half.z - 4; z <= l.half.z + 4; z += 4.5f)
-            fog_.push_back({x + hash(x, z) * 3, 0.25f + hash(z, x) * 0.6f, z + hash(x + 1, z) * 3, 6.0f + hash(z + 1, x) * 3, 0.07f, 0.4f});
+            fog_.push_back({x + hash(x, z) * 3, 0.25f + hash(z, x) * 0.6f, z + hash(x + 1, z) * 3, 6.0f + hash(z + 1, x) * 3, 0.11f, 0.4f});
 }
 
 void Game::camera(float aspect) {
@@ -555,7 +555,7 @@ void Game::draw() {
 
     // ---- lights
     std::vector<StrataPointLight> lights;
-    lights.push_back(light(lamp + V3{0, 0.4f, 0}, r * 2.3f + 1.0f, 1.0f, 0.62f, 0.28f, (w.flare > 0 ? 2.6f : 1.5f) * flick));
+    lights.push_back(light(lamp + V3{0, 0.4f, 0}, r * 2.6f + 2.0f, 1.0f, 0.62f, 0.28f, (w.flare > 0 ? 3.6f : 2.3f) * flick));
     const Vec2 h = l.home;
     if (l.homeKind == HomeKind::Cottage) {
         lights.push_back(light(at(h + Vec2{0, -1.2f}, 1.2f), 8.0f, 1.0f, 0.7f, 0.35f, 1.2f));
@@ -569,7 +569,7 @@ void Game::draw() {
     for (const Wisp& s : w.wisps)
         if (s.dispelled <= 0 && lights.size() < 30) lights.push_back(light(at(s.pos, 1.0f), 4.5f, 0.35f, 1.0f, 0.7f, 0.9f * flick));
     // A faint fill from the sky, so shapes keep their edges in the dark.
-    lights.push_back(light({w.player.x, 40.0f, w.player.z + 8}, 120.0f, 0.45f, 0.55f, 1.0f, 0.55f));
+    lights.push_back(light({w.player.x, 40.0f, w.player.z + 8}, 140.0f, 0.45f, 0.55f, 1.0f, 1.15f));
     engine_.setPointLights(lights.data(), lights.size());
 
     // ---- ghosts
@@ -606,7 +606,8 @@ void Game::draw() {
     const uint32_t soft = STRATA_POINT_SOFT;
     // The lantern's flame and halo.
     pts.push_back(point(lamp, 0.2f, 3, 1.0f, 0.9f, 0.6f, 1.0f, 0));
-    pts.push_back(point(lamp, 1.4f * flick + (w.flare > 0 ? 2.5f : 0), 0, 1.0f, 0.7f, 0.3f, 0.55f, soft));
+    pts.push_back(point(lamp, 2.0f * flick + (w.flare > 0 ? 3.0f : 0), 0, 1.0f, 0.7f, 0.3f, 0.6f, soft));
+    pts.push_back(point(lamp + V3{0, -0.8f, 0}, r * 1.3f, 0, 1.0f, 0.6f, 0.25f, w.flare > 0 ? 0.22f : 0.10f, soft));
     // The door's glow, pulsing gently: home.
     {
         const float pulse = 0.5f + 0.5f * std::sin(t * 2.0f);
@@ -615,6 +616,9 @@ void Game::draw() {
         for (size_t i = 0; i < windows_.size(); ++i)
             pts.push_back(point(at(windows_[i], windowY_), 1.6f, 0, 1.0f, 0.75f, 0.4f, 0.25f, soft));
     }
+    // The moon on the ponds.
+    for (const Circle& c : l.ponds)
+        pts.push_back(point(at(c.c + Vec2{0.3f, -0.4f}, -0.05f), c.r * 0.9f, 0, 0.55f, 0.65f, 0.9f, 0.10f + 0.02f * std::sin(t * 0.7f + c.c.x), soft));
     // Ghosts already home peek out at the windows.
     {
         int home = 0;
@@ -638,7 +642,7 @@ void Game::draw() {
         if (g.state == GhostState::Following) gr = 0.9f, gg = 0.8f, gb = 0.65f, ga = 0.30f;
         if (g.state == GhostState::Lured) gr = 0.35f, gg = 1.0f, gb = 0.7f, ga = 0.34f;
         if (g.state == GhostState::Scared) ga = 0.15f + 0.15f * std::fabs(std::sin(g.phase * 20));
-        pts.push_back(point(c, 2.3f * s, 0, gr, gg, gb, ga, soft));
+        pts.push_back(point(c, 2.6f * s, 0, gr, gg, gb, ga * 1.3f, soft));
         const V3 face = c + V3{0, 0.30f * s, 0} + toCam * (0.36f * s);
         const bool blink = std::fmod(g.phase * 0.9f + static_cast<float>(&g - w.ghosts.data()) * 0.37f, 4.0f) < 0.12f;
         const float eyeSize = (g.state == GhostState::Scared ? 0.15f : 0.11f) * s;

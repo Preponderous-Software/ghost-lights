@@ -210,6 +210,20 @@ function colourCount(png) {
   console.log(`after the autopilot: ${s.home} of ${s.ghosts} home in ${s.time.toFixed(1)} s, ${s.scatters} frights`);
   if (!s.done) await fail('the autopilot did not bring night 2\'s ghosts home');
 
+  // Nights 3 and 5 draw (fog banks, wisps, the churchyard): screenshots for the README.
+  for (const [n, name] of [[2, 'fog'], [4, 'churchyard']]) {
+    await page.evaluate((i) => window.ghostLights.level(i), n);
+    s = await until((st) => st.level === n);
+    if (s.level !== n) await fail('the level hook did not open night ' + (n + 1));
+    await page.waitForFunction(() => document.getElementById('intro').classList.contains('on'), null, { timeout: 10000 }).catch(() => {});
+    await press('#beginBtn');
+    await page.evaluate(() => window.ghostLights.autopilot(1));
+    await page.waitForTimeout(6000);
+    await page.evaluate(() => window.ghostLights.autopilot(0));
+    await shot(`ghost-lights-${name}.png`);
+    console.log(`ok: night ${n + 1} "${s.name}" draws (${s.fog} fog banks, ${s.wisps} wisps)`);
+  }
+
   // Sound off, kept over a reload.
   await press('#soundBtn');
   if ((await page.locator('#soundBtn').getAttribute('aria-pressed')) !== 'false') await fail('the Sound button did not turn the sound off');
