@@ -2,7 +2,9 @@
 
 **Play it in a browser: https://ghost-lights.play.danielstephenson.dev** (desktop and phone)
 
-![The keeper's lantern on the foggy marsh, little ghosts following its light towards the cottage](docs/images/ghost-lights.png)
+![The first night: the keeper's lantern on the marsh, three little ghosts waiting in the dark, a pond to the east](docs/images/ghost-lights.png)
+
+_The first night, from the browser build's smoke test (headless Chromium, software WebGL)._
 
 Lost little ghosts drift across a foggy marsh on Halloween night. You carry a lantern, and ghosts that come near
 its light follow you. Lead them home to the cottage, and on the last night through the churchyard gate.
