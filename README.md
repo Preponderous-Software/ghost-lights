@@ -63,6 +63,14 @@ node web/smoke/smoke.cjs http://127.0.0.1:8080/ smoke-out/desktop          # and
 CI (`.github/workflows/browser.yml`) builds the page, runs the tests as wasm under Node, smoke-tests the page in
 headless Chromium on a desktop and an iPhone 13 profile, and deploys `main` to the arcade.
 
+## Releases
+
+A release is a bare version tag (`0.1.0`, no `v`) that matches `project(... VERSION ...)` in
+`CMakeLists.txt`. Pushing one makes `.github/workflows/release.yml` build the browser game and
+attach `GhostLights-<version>-web.zip` (the page, its `.js` and `.wasm`, and the licences) and its
+`.sha256` to the GitHub release. The arcade still deploys every push to `main`; a release does not
+change what it serves.
+
 ## Licence
 
 MIT; see [LICENSE](LICENSE). Strata and its web kit are MIT as well (`web/strata-kit/LICENSE`).
