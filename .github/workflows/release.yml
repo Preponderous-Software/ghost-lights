@@ -1,0 +1,201 @@
+# Builds Ghost Lights for the browser and attaches the download to a GitHub
+# release. The game is web-only, so the one download is the site the arcade
+# serves (index.html, ghost-lights.js, ghost-lights.wasm) plus the licences, as
+# GhostLights-<version>-web.zip with its .sha256. No release is made by merging:
+# one is cut only when a version tag is pushed or a release is made by hand.
+#
+#   - Pushing a bare version tag (0.1.0, no "v") or publishing a release for
+#     one builds the zip and uploads it to that release. A pushed tag with no
+#     release yet gets a pre-release created.
+#   - A pull request that changes this workflow or CMakeLists.txt runs the same
+#     build as a dry run (a workflow artifact only, no release touched).
+#   - workflow_dispatch with no tag is the same dry run from the chosen branch.
+#     Given a tag, it builds that tag and attaches to its existing release.
+#
+# Nothing is published anywhere else (no store uploads).
+name: Release
+
+on:
+  release:
+    types: [published]
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "CMakeLists.txt"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build and attach to (empty = dry run: workflow artifact only)"
+        required: false
+        default: ""
+
+# A release created with gh release create also pushes its tag, so both events
+# fire for one release. Keyed on the tag, the later run replaces the earlier.
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  meta:
+    name: Resolve the version
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Resolve tag and ref
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          case "$EVENT" in
+            release)           tag="$RELEASE_TAG" ;;
+            push)              tag="$REF_NAME" ;;
+            workflow_dispatch) tag="$INPUT_TAG" ;;
+            *)                 tag="" ;;
+          esac
+          if [ -n "$tag" ]; then
+            if ! [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Release tags are bare version numbers such as 0.1.0, not '$tag'."
+              exit 1
+            fi
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "ref=refs/tags/$tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.ref }}
+
+      # The version the page reports (the arcade's version file comes from the
+      # same line) must be the version it is released as.
+      - name: Read the project version and check it against the tag
+        id: version
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          version=$(sed -n 's/^project(ghost_lights VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          if [ -z "$version" ]; then
+            echo "::error::Could not read the version from project(ghost_lights VERSION ...) in CMakeLists.txt."
+            exit 1
+          fi
+          if [ -n "$TAG" ] && [ "$version" != "$TAG" ]; then
+            echo "::error::CMakeLists.txt says $version but the tag is $TAG. Bump the project version first."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building Ghost Lights $version (tag: ${TAG:-none, dry run})"
+
+  web:
+    name: Web build
+    needs: meta
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.ref }}
+
+      - name: Check out the pinned Strata
+        run: |
+          ref="$(sed -n 's/.*GHOST_STRATA_REF "\([0-9a-f]*\)".*/\1/p' CMakeLists.txt)"
+          test -n "$ref"
+          git init -q "$RUNNER_TEMP/strata"
+          git -C "$RUNNER_TEMP/strata" fetch -q --depth 1 https://github.com/Preponderous-Software/strata.git "$ref"
+          git -C "$RUNNER_TEMP/strata" checkout -q FETCH_HEAD
+          echo "STRATA_DIR=$RUNNER_TEMP/strata" >> "$GITHUB_ENV"
+
+      - name: Set up emsdk 6.0.11 (Strata's pin)
+        run: |
+          git clone -q --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 6.0.11
+          "$RUNNER_TEMP/emsdk/emsdk" activate 6.0.11
+
+      # The same build as the arcade's (browser.yml), whose smoke test plays it.
+      - name: Build
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release -DGHOST_WEB=ON \
+            -DGHOST_WARNINGS_AS_ERRORS=ON -DFETCHCONTENT_SOURCE_DIR_STRATA="$STRATA_DIR" -Wno-dev
+          cmake --build build-web -j "$(nproc)"
+
+      - name: Tests as wasm (Node)
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          ctest --test-dir build-web --output-on-failure
+
+      - name: Assemble the package
+        run: |
+          dir="dist/GhostLights-$VERSION-web"
+          mkdir -p "$dir"
+          cp build-web/ghost-lights.html "$dir/index.html"
+          cp build-web/ghost-lights.js build-web/ghost-lights.wasm "$dir/"
+          cp LICENSE "$dir/LICENSE.txt"
+          cp "$STRATA_DIR/LICENSE" "$dir/STRATA-LICENSE.txt"
+          cp "$STRATA_DIR/THIRD_PARTY_NOTICES.md" "$dir/THIRD-PARTY.md"
+          grep -q 'danielstephenson.dev/play' "$dir/index.html"
+          ls -l "$dir"
+
+      - name: Archive
+        run: |
+          cd dist
+          zip -qr "GhostLights-$VERSION-web.zip" "GhostLights-$VERSION-web"
+          sha256sum "GhostLights-$VERSION-web.zip" > "GhostLights-$VERSION-web.zip.sha256"
+          sha256sum -c "GhostLights-$VERSION-web.zip.sha256"
+          ls -l
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: GhostLights-${{ env.VERSION }}-web
+          path: |
+            dist/GhostLights-${{ env.VERSION }}-web.zip
+            dist/GhostLights-${{ env.VERSION }}-web.zip.sha256
+          if-no-files-found: error
+
+  attach:
+    name: Attach to the release
+    needs: [meta, web]
+    if: needs.meta.outputs.tag != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.meta.outputs.tag }}
+    steps:
+      - name: Download the package
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # A tag pushed on its own has no release yet; one is made as a
+      # pre-release. A release made with GITHUB_TOKEN does not start this
+      # workflow again.
+      - name: Make sure the release exists
+        run: |
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --prerelease --generate-notes --title "Ghost Lights $TAG"
+          fi
+
+      - name: Upload to the release
+        run: |
+          ls -l dist
+          gh release upload "$TAG" dist/* --clobber
